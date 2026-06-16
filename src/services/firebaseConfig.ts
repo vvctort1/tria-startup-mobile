@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 // @ts-ignore: O Firebase não exporta a tipagem corretamente, mas a função existe no pacote RN
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore'; // ⬅️ Nova importação aqui
+import { initializeFirestore } from 'firebase/firestore'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
