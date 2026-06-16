@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     padding: 20, 
-    paddingTop: 50, 
+    paddingTop: 70, 
     backgroundColor: '#fff', 
     borderBottomWidth: 1, 
     borderColor: '#eee' 

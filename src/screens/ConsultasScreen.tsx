@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   header: { 
     alignItems: 'flex-end', 
     padding: 20, 
-    paddingTop: 50, 
+    paddingTop: 70, 
     backgroundColor: '#fff', 
     borderBottomWidth: 1, 
     borderColor: '#eee' 

@@ -96,6 +96,7 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'flex-end',
     marginBottom: 20,
+    marginTop: 50
   },
   searchRow: {
     flexDirection: 'row',

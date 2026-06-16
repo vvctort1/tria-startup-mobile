@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     borderBottomWidth: 1, 
     borderColor: '#ddd', 
-    paddingTop: 60 
+    paddingTop: 70 
   },
   headerTitle: { 
     fontSize: 18, 
