@@ -1,62 +1,73 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, Modal, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Image,
+  Modal,
+  Alert,
+  ActivityIndicator,
+  StatusBar,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { db } from '../services/firebaseConfig';
 import { useAuth } from '../hooks/useAuth';
+import { colors, radius, spacing, typography, shadow } from '../theme';
 
-const HORARIOS_MOCK = ['14/06 - 10:00', '14/06 - 14:30', '15/06 - 09:00'];
+const HORARIOS_MOCK = [
+  { label: '14 Jun', time: '10:00', slot: '14/06 - 10:00' },
+  { label: '14 Jun', time: '14:30', slot: '14/06 - 14:30' },
+  { label: '15 Jun', time: '09:00', slot: '15/06 - 09:00' },
+];
 
 export function VetProfileScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { user } = useAuth();
-  
   const vet = route.params?.vet;
 
   const [horarioSelecionado, setHorarioSelecionado] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  
-  // Novos estados para os pets reais
   const [meusPets, setMeusPets] = useState<any[]>([]);
   const [petSelecionado, setPetSelecionado] = useState<any>(null);
   const [loadingPets, setLoadingPets] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Busca os pets do usuário no Firestore quando ele abre o perfil do veterinário
   useEffect(() => {
-    const buscarPetsDoUsuario = async () => {
+    const buscarPets = async () => {
       if (!user) return;
       setLoadingPets(true);
       try {
-        const docRef = doc(db, 'users', user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const petsArray = docSnap.data().pets || [];
-          setMeusPets(petsArray);
-          if (petsArray.length > 0) {
-            setPetSelecionado(petsArray[0]); // Seleciona o primeiro pet por padrão
-          }
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        if (snap.exists()) {
+          const pets = snap.data().pets || [];
+          setMeusPets(pets);
+          if (pets.length > 0) setPetSelecionado(pets[0]);
         }
-      } catch (error) {
-        console.error("Erro ao buscar pets:", error);
+      } catch {
+        console.error('Erro ao buscar pets');
       } finally {
         setLoadingPets(false);
       }
     };
-
-    buscarPetsDoUsuario();
+    buscarPets();
   }, [user]);
 
   const abrirModal = () => {
     if (!horarioSelecionado) return Alert.alert('Atenção', 'Selecione um horário primeiro.');
-    if (meusPets.length === 0) return Alert.alert('Atenção', 'Você precisa cadastrar um pet no seu Perfil primeiro.');
+    if (meusPets.length === 0) return Alert.alert('Atenção', 'Cadastre um pet no seu Perfil primeiro.');
     setModalVisible(true);
   };
 
   const confirmarAgendamento = async () => {
+    if (!user || !petSelecionado) return;
+    setSaving(true);
     try {
-      if (!user || !petSelecionado) return;
-      
       await addDoc(collection(db, 'consultas'), {
         userId: user.uid,
         vetId: vet.id,
@@ -66,290 +77,437 @@ export function VetProfileScreen() {
         time: horarioSelecionado?.split(' - ')[1],
         petName: petSelecionado.nome,
         status: 'agendada',
-        createdAt: new Date()
+        createdAt: new Date(),
       });
-
       setModalVisible(false);
-      Alert.alert('Sucesso', 'Consulta agendada com sucesso!', [
-        { text: 'OK', onPress: () => navigation.navigate('Consultas') }
+      Alert.alert('Agendamento confirmado', `Sua consulta com ${vet.name} foi agendada.`, [
+        { text: 'Ver consultas', onPress: () => navigation.navigate('Consultas') },
       ]);
-
-    } catch (error) {
+    } catch {
       Alert.alert('Erro', 'Não foi possível agendar.');
+    } finally {
+      setSaving(false);
     }
   };
 
-  if (!vet) return <View style={styles.container}><Text>Erro ao carregar perfil.</Text></View>;
+  if (!vet) {
+    return (
+      <View style={styles.errorState}>
+        <Text style={styles.errorText}>Perfil não encontrado.</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={{ fontSize: 24 }}>←</Text>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={22} color={colors.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Logo TRIA</Text>
+        <Text style={styles.headerTitle}>Perfil do Veterinário</Text>
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.profileHeader}>
-          <Image source={{ uri: vet.avatar }} style={styles.avatarGrande} />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.profileCard}>
+          <Image source={{ uri: vet.avatar }} style={styles.avatar} />
           <Text style={styles.vetName}>{vet.name}</Text>
-          <Text style={styles.vetSpecialty}>{vet.specialty} • ⭐ {vet.rating.toFixed(1)}</Text>
+          <Text style={styles.vetSpecialty}>{vet.specialty}</Text>
+
+          <View style={styles.ratingRow}>
+            <View style={styles.ratingBadge}>
+              <Ionicons name="star" size={14} color="#F6A623" />
+              <Text style={styles.ratingValue}>{vet.rating.toFixed(1)}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <Text style={styles.statText}>+10 anos de experiência</Text>
+          </View>
         </View>
 
-        <Text style={styles.bio}>
-          Médico(a) veterinário(a) especializado(a) em oferecer o melhor cuidado para o seu pet. Experiência de mais de 10 anos na área clínica e cirúrgica.
-        </Text>
-
-        <Text style={styles.sectionTitle}>Horários de Atendimento</Text>
-        <View style={styles.horariosContainer}>
-          {HORARIOS_MOCK.map((horario) => (
-            <TouchableOpacity 
-              key={horario} 
-              style={[styles.horarioBtn, horarioSelecionado === horario && styles.horarioBtnSelected]}
-              onPress={() => setHorarioSelecionado(horario)}
-            >
-              <Text style={horarioSelecionado === horario ? styles.horarioTextSelected : styles.horarioText}>
-                {horario}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sobre</Text>
+          <Text style={styles.bioText}>
+            Médico(a) veterinário(a) especializado(a) em {vet.specialty.toLowerCase()}, com foco no bem-estar animal e atendimento humanizado. Atende animais de pequeno e médio porte, oferecendo diagnóstico preciso e tratamento baseado em evidências.
+          </Text>
         </View>
 
-        <TouchableOpacity style={styles.agendarBtn} onPress={abrirModal}>
-          <Text style={styles.agendarBtnText}>📅 Agendar Consulta</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Horários disponíveis</Text>
+          <View style={styles.slotsGrid}>
+            {HORARIOS_MOCK.map((h) => {
+              const isSelected = horarioSelecionado === h.slot;
+              return (
+                <TouchableOpacity
+                  key={h.slot}
+                  style={[styles.slot, isSelected && styles.slotSelected]}
+                  onPress={() => setHorarioSelecionado(h.slot)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.slotDate, isSelected && styles.slotTextSelected]}>
+                    {h.label}
+                  </Text>
+                  <Text style={[styles.slotTime, isSelected && styles.slotTextSelected]}>
+                    {h.time}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.scheduleBtn, !horarioSelecionado && styles.scheduleBtnDisabled]}
+          onPress={abrirModal}
+          activeOpacity={0.85}
+          disabled={!horarioSelecionado}
+        >
+          <Ionicons name="calendar-outline" size={18} color={colors.white} />
+          <Text style={styles.scheduleBtnText}>Agendar Consulta</Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* MODAL DE CONFIRMAÇÃO */}
-      <Modal visible={modalVisible} transparent={true} animationType="slide">
+      <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeIcon}>
-              <Text style={{ fontSize: 20 }}>✕</Text>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
 
-            <View style={styles.modalResumoHeader}>
-              <View style={styles.modalResumoBox}>
-                <Text style={styles.modalResumoLabel}>Data</Text>
-                <Text style={styles.modalResumoValor}>{horarioSelecionado?.split(' - ')[0]}</Text>
+            <Text style={styles.modalTitle}>Confirmar agendamento</Text>
+
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryLabel}>Data</Text>
+                <Text style={styles.summaryValue}>{horarioSelecionado?.split(' - ')[0]}</Text>
               </View>
-              <View style={styles.modalResumoBox}>
-                <Text style={styles.modalResumoLabel}>Horário</Text>
-                <Text style={styles.modalResumoValor}>{horarioSelecionado?.split(' - ')[1]}</Text>
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryLabel}>Horário</Text>
+                <Text style={styles.summaryValue}>{horarioSelecionado?.split(' - ')[1]}</Text>
+              </View>
+              <View style={styles.summaryBox}>
+                <Text style={styles.summaryLabel}>Veterinário</Text>
+                <Text style={styles.summaryValue} numberOfLines={1}>{vet.name.split(' ')[0]}</Text>
               </View>
             </View>
 
-            <Text style={styles.modalTitle}>Selecionar Pet</Text>
-            
+            <Text style={styles.modalSubtitle}>Selecionar pet</Text>
+
             {loadingPets ? (
-              <ActivityIndicator size="large" color="#6666ff" />
+              <ActivityIndicator size="large" color={colors.accent} style={{ marginVertical: spacing.lg }} />
             ) : (
-              <ScrollView style={{ maxHeight: 200 }}>
+              <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={false}>
                 {meusPets.map((pet) => (
-                  <TouchableOpacity 
-                    key={pet.nome} // Usando o nome como chave primária simplificada
-                    style={[styles.petCard, petSelecionado?.nome === pet.nome && styles.petCardSelected]}
+                  <TouchableOpacity
+                    key={pet.nome}
+                    style={[styles.petRow, petSelecionado?.nome === pet.nome && styles.petRowSelected]}
                     onPress={() => setPetSelecionado(pet)}
                   >
-                    <Image source={{ uri: pet.avatar || 'https://via.placeholder.com/150' }} style={styles.petIconReal} />
-                    <View>
-                      <Text style={styles.petName}>{pet.nome}</Text>
-                      <Text style={styles.petDesc}>{pet.especie}</Text>
+                    <View style={styles.petIconWrapper}>
+                      <Ionicons name="paw" size={18} color={petSelecionado?.nome === pet.nome ? colors.accent : colors.textMuted} />
                     </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.petName}>{pet.nome}</Text>
+                      <Text style={styles.petDesc}>{pet.especie} • {pet.raca}</Text>
+                    </View>
+                    {petSelecionado?.nome === pet.nome && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+                    )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
             )}
 
-            <TouchableOpacity style={styles.confirmBtn} onPress={confirmarAgendamento}>
-              <Text style={styles.confirmBtnText}>Confirmar Agendamento</Text>
+            <TouchableOpacity
+              style={[styles.confirmBtn, saving && styles.confirmBtnDisabled]}
+              onPress={confirmarAgendamento}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Text style={styles.confirmBtnText}>Confirmar agendamento</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.primary,
   },
   header: {
+    backgroundColor: colors.primary,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
-    paddingTop: 70,
-    borderBottomWidth: 1,
-    borderColor: '#eee',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.lg,
   },
-  backButton: {
-    paddingRight: 20,
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...typography.h3,
+    color: colors.white,
   },
-  content: {
-    padding: 20,
+  scroll: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
   },
-  profileHeader: {
+  scrollContent: {
+    padding: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  profileCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: spacing.lg,
+    ...shadow.md,
   },
-  avatarGrande: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    marginBottom: 15,
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    marginBottom: spacing.md,
+    borderWidth: 3,
+    borderColor: colors.accentLight,
   },
   vetName: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#002244',
+    ...typography.h2,
+    textAlign: 'center',
+    marginBottom: 4,
   },
   vetSpecialty: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 5,
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
   },
-  bio: {
-    fontSize: 15,
-    color: '#444',
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 30,
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFF8E6',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  ratingValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#9A6700',
+  },
+  statDivider: {
+    width: 1,
+    height: 14,
+    backgroundColor: colors.border,
+  },
+  statText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  section: {
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
+    ...typography.h3,
+    marginBottom: spacing.sm,
   },
-  horariosContainer: {
-    backgroundColor: '#f5f5f5',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 30,
+  bioText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    lineHeight: 24,
   },
-  horarioBtn: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+  slotsGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  slot: {
+    flex: 1,
+    minWidth: 90,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
     alignItems: 'center',
-    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    ...shadow.sm,
   },
-  horarioBtnSelected: {
-    backgroundColor: '#002244',
-    borderColor: '#002244',
+  slotSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  horarioText: {
-    fontSize: 16,
-    color: '#333',
+  slotDate: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
-  horarioTextSelected: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: 'bold',
+  slotTime: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
-  agendarBtn: {
-    backgroundColor: '#6666ff',
-    padding: 18,
-    borderRadius: 10,
+  slotTextSelected: {
+    color: colors.white,
+  },
+  scheduleBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 17,
+    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    ...shadow.sm,
   },
-  agendarBtnText: {
-    color: '#fff',
+  scheduleBtnDisabled: {
+    opacity: 0.4,
+  },
+  scheduleBtnText: {
+    color: colors.white,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    minHeight: '60%',
+  modalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.lg,
+    paddingBottom: 40,
   },
-  closeIcon: {
-    alignSelf: 'flex-start',
-    marginBottom: 10,
-    padding: 5,
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
   },
-  modalResumoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-    gap: 10,
-  },
-  modalResumoBox: {
-    flex: 1,
-    backgroundColor: '#f0f0f0',
-    padding: 15,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  modalResumoLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 5,
-  },
-  modalResumoValor: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#002244',
+  modalCloseBtn: {
+    alignSelf: 'flex-end',
+    padding: spacing.xs,
+    marginBottom: spacing.xs,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 15,
+    ...typography.h3,
+    marginBottom: spacing.md,
   },
-  petCard: {
+  summaryRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  summaryBox: {
+    flex: 1,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    alignItems: 'center',
+  },
+  summaryLabel: {
+    ...typography.label,
+    marginBottom: 4,
+    color: colors.textSecondary,
+  },
+  summaryValue: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.primary,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    ...typography.h3,
+    marginBottom: spacing.sm,
+  },
+  petRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9f9f9',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
   },
-  petCardSelected: {
-    borderColor: '#6666ff',
-    backgroundColor: '#eef2ff',
+  petRowSelected: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accentLight,
   },
-  petIconReal: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 15,
-    backgroundColor: '#ccc',
+  petIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   petName: {
-    fontSize: 16,
-    fontWeight: 'bold',
+    ...typography.body,
+    fontWeight: '600',
   },
   petDesc: {
-    fontSize: 14,
-    color: '#666',
+    ...typography.bodySmall,
+    color: colors.textSecondary,
   },
   confirmBtn: {
-    backgroundColor: '#6666ff',
-    padding: 18,
-    borderRadius: 10,
+    backgroundColor: colors.accent,
+    borderRadius: radius.lg,
+    paddingVertical: 17,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: spacing.md,
+    ...shadow.sm,
+  },
+  confirmBtnDisabled: {
+    opacity: 0.6,
   },
   confirmBtnText: {
-    color: '#fff',
+    color: colors.white,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+  },
+  errorState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  errorText: {
+    ...typography.body,
+    color: colors.textSecondary,
   },
 });

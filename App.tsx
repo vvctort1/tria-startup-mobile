@@ -20,6 +20,9 @@ function RootNavigation() {
   useEffect(() => {
     const checkFirstLaunch = async () => {
       try {
+        // TODO: remover antes de produção
+        await AsyncStorage.removeItem('@app_first_launch');
+
         const value = await AsyncStorage.getItem('@app_first_launch');
         if (value === null) {
           setIsFirstLaunch(true);

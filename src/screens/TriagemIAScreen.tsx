@@ -1,19 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Image, 
-  ActivityIndicator, 
-  Alert, 
+import { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  StatusBar,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, spacing, typography, shadow } from '../theme';
 
 const genAI = new GoogleGenerativeAI(process.env.EXPO_PUBLIC_GEMINI_API_KEY!);
 
@@ -24,15 +28,17 @@ type Message = {
   imageUri?: string;
 };
 
+const SYSTEM_PROMPT =
+  'Você é a assistente de pré-triagem veterinária da plataforma TRIA. Analise os sintomas e imagens com rigor clínico. Forneça avaliação preliminar objetiva, sempre recomendando consulta presencial com veterinário para diagnóstico definitivo. Seja empática, clara e profissional. Responda em português.';
+
 export function TriagemIAScreen() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
-      text: 'Olá! Sou a assistente inteligente da TRIA. Como posso ajudar o seu pet hoje? Você pode me descrever os sintomas ou enviar uma foto.',
-      sender: 'ia'
-    }
+      text: 'Olá! Sou a assistente de triagem da TRIA. Descreva os sintomas do seu pet ou envie uma foto para que eu possa ajudá-lo com uma avaliação preliminar.',
+      sender: 'ia',
+    },
   ]);
-  
   const [prompt, setPrompt] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -40,23 +46,13 @@ export function TriagemIAScreen() {
 
   const flatListRef = useRef<FlatList>(null);
 
-  // Efeito para rolar a tela para baixo sempre que o loading mudar (para mostrar o balão de "pensando")
-  useEffect(() => {
-    if (loading) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [loading]);
-
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
+    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 0.5, 
+      quality: 0.5,
       base64: true,
     });
-
     if (!result.canceled && result.assets[0].base64) {
       setImageUri(result.assets[0].uri);
       setImageBase64(result.assets[0].base64);
@@ -70,287 +66,364 @@ export function TriagemIAScreen() {
       id: Date.now().toString(),
       text: prompt.trim(),
       sender: 'user',
-      imageUri: imageUri || undefined
+      imageUri: imageUri || undefined,
     };
 
-    setMessages(prev => [...prev, novaMensagemUsuario]);
-    
+    setMessages((prev) => [...prev, novaMensagemUsuario]);
+
     const textoEnviado = prompt;
-    const imagemEnviadaBase64 = imageBase64;
+    const imagemBase64 = imageBase64;
     setPrompt('');
     setImageUri(null);
     setImageBase64(null);
     setLoading(true);
 
-    try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-3.5-flash' });
+    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
-      const historicoTexto = messages.map(m => `${m.sender === 'user' ? 'Tutor' : 'Assistente IA'}: ${m.text}`).join('\n');
-      const contextoVeterinario = "Você é uma IA de pré-triagem veterinária. Analise os sintomas descritos e a imagem fornecida. Dê uma avaliação preliminar, mas avise sempre que o diagnóstico final deve ser feito pelo veterinário da plataforma. Seja empática e direta.";
-      
-      const promptCompleto = `${contextoVeterinario}\n\nHistórico da conversa:\n${historicoTexto}\n\nTutor: ${textoEnviado}`;
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+      const historico = messages
+        .map((m) => `${m.sender === 'user' ? 'Tutor' : 'Assistente'}: ${m.text}`)
+        .join('\n');
+      const promptCompleto = `${SYSTEM_PROMPT}\n\nHistórico:\n${historico}\n\nTutor: ${textoEnviado}`;
 
       let result;
-
-      if (imagemEnviadaBase64) {
-        const imagePart = {
-          inlineData: {
-            data: imagemEnviadaBase64,
-            mimeType: 'image/jpeg'
-          }
-        };
-        result = await model.generateContent([promptCompleto, imagePart]);
+      if (imagemBase64) {
+        result = await model.generateContent([
+          promptCompleto,
+          { inlineData: { data: imagemBase64, mimeType: 'image/jpeg' } },
+        ]);
       } else {
         result = await model.generateContent(promptCompleto);
       }
 
-      const respostaTexto = result.response.text();
-      
-      const novaMensagemIA: Message = {
-        id: (Date.now() + 1).toString(),
-        text: respostaTexto,
-        sender: 'ia'
-      };
-
-      setMessages(prev => [...prev, novaMensagemIA]);
-
-    } catch (error: any) {
-      console.error("ERRO GEMINI:", error);
-      Alert.alert('Erro Técnico', 'Falha ao processar a resposta da IA.');
+      setMessages((prev) => [
+        ...prev,
+        { id: (Date.now() + 1).toString(), text: result.response.text(), sender: 'ia' },
+      ]);
+    } catch {
+      Alert.alert('Erro', 'Falha ao processar a resposta da IA. Tente novamente.');
     } finally {
       setLoading(false);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 150);
     }
   };
 
-  const renderMessage = ({ item }: { item: Message }) => {
-    const isUser = item.sender === 'user';
-    return (
-      <View style={[styles.messageWrapper, isUser ? styles.messageWrapperUser : styles.messageWrapperIA]}>
-        <View style={[styles.messageBubble, isUser ? styles.messageUser : styles.messageIA]}>
-          {item.imageUri && (
-            <Image source={{ uri: item.imageUri }} style={styles.messageImage} />
-          )}
-          {item.text ? <Text style={isUser ? styles.textUser : styles.textIA}>{item.text}</Text> : null}
-        </View>
-      </View>
-    );
-  };
+  const canSend = (prompt.trim().length > 0 || !!imageUri) && !loading;
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
+
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Triagem Inteligente</Text>
+        <View>
+          <Text style={styles.headerTitle}>Triagem com IA</Text>
+          <View style={styles.statusRow}>
+            <View style={styles.statusDot} />
+            <Text style={styles.statusText}>Assistente online</Text>
+          </View>
+        </View>
+        <Image
+          source={require('../../assets/LogoTria1.png')}
+          style={styles.headerLogo}
+          resizeMode="contain"
+        />
       </View>
 
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        keyExtractor={item => item.id}
-        renderItem={renderMessage}
-        contentContainerStyle={styles.chatContainer}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        // Renderiza o indicador de digitação no final da lista se estiver carregando
-        ListFooterComponent={
-          loading ? (
-            <View style={[styles.messageWrapper, styles.messageWrapperIA]}>
-              <View style={[styles.messageBubble, styles.messageIA, styles.typingIndicator]}>
-                <ActivityIndicator size="small" color="#666" />
-                <Text style={styles.typingText}>A IA está analisando...</Text>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.chatContent}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => {
+            const isUser = item.sender === 'user';
+            return (
+              <View style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowIA]}>
+                {!isUser && (
+                  <View style={styles.iaAvatar}>
+                    <Ionicons name="pulse" size={14} color={colors.accent} />
+                  </View>
+                )}
+                <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleIA]}>
+                  {item.imageUri && (
+                    <Image source={{ uri: item.imageUri }} style={styles.msgImage} />
+                  )}
+                  {item.text ? (
+                    <Text style={isUser ? styles.textUser : styles.textIA}>{item.text}</Text>
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ) : null
-        }
-      />
+            );
+          }}
+          ListFooterComponent={
+            loading ? (
+              <View style={[styles.msgRow, styles.msgRowIA]}>
+                <View style={styles.iaAvatar}>
+                  <Ionicons name="pulse" size={14} color={colors.accent} />
+                </View>
+                <View style={[styles.bubble, styles.bubbleIA, styles.typingBubble]}>
+                  <ActivityIndicator size="small" color={colors.accent} />
+                  <Text style={styles.typingText}>Analisando...</Text>
+                </View>
+              </View>
+            ) : null
+          }
+        />
 
-      {imageUri && (
-        <View style={styles.attachmentPreview}>
-          <Image source={{ uri: imageUri }} style={styles.previewImage} />
-          <TouchableOpacity style={styles.removeImageBtn} onPress={() => { setImageUri(null); setImageBase64(null); }}>
-            <Text style={styles.removeImageText}>X</Text>
+        {imageUri && (
+          <View style={styles.attachRow}>
+            <Image source={{ uri: imageUri }} style={styles.attachThumb} />
+            <View style={styles.attachInfo}>
+              <Text style={styles.attachLabel}>Imagem anexada</Text>
+              <Text style={styles.attachSub}>Pronta para envio</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.removeBtn}
+              onPress={() => { setImageUri(null); setImageBase64(null); }}
+            >
+              <Ionicons name="close" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <View style={styles.inputBar}>
+          <TouchableOpacity style={styles.attachBtn} onPress={pickImage}>
+            <Ionicons name="camera-outline" size={22} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Descreva os sintomas..."
+            placeholderTextColor={colors.textMuted}
+            value={prompt}
+            onChangeText={setPrompt}
+            multiline
+            maxLength={1000}
+          />
+
+          <TouchableOpacity
+            style={[styles.sendBtn, canSend ? styles.sendBtnActive : styles.sendBtnDisabled]}
+            onPress={enviarParaGemini}
+            disabled={!canSend}
+          >
+            <Ionicons name="send" size={18} color={canSend ? colors.white : colors.textMuted} />
           </TouchableOpacity>
         </View>
-      )}
-
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.iconButton} onPress={pickImage}>
-          <Text style={{ fontSize: 24 }}>📷</Text>
-        </TouchableOpacity>
-        
-        <TextInput 
-          style={styles.input} 
-          placeholder="Digite sua mensagem..." 
-          value={prompt}
-          onChangeText={setPrompt}
-          multiline
-        />
-        
-        <TouchableOpacity 
-          style={[styles.sendButton, (!prompt.trim() && !imageUri) ? styles.sendButtonDisabled : null]} 
-          onPress={enviarParaGemini} 
-          disabled={loading || (!prompt.trim() && !imageUri)}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.sendButtonText}>Enviar</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#f5f5f5' 
+  safe: {
+    flex: 1,
+    backgroundColor: colors.primary,
   },
-  header: { 
-    padding: 20, 
-    backgroundColor: '#fff', 
-    alignItems: 'center', 
-    borderBottomWidth: 1, 
-    borderColor: '#ddd', 
-    paddingTop: 70 
+  flex: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  headerTitle: { 
-    fontSize: 18, 
-    fontWeight: 'bold', 
-    color: '#002244' 
+  header: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  chatContainer: { 
-    padding: 15, 
-    paddingBottom: 20 
+  headerTitle: {
+    ...typography.h3,
+    color: colors.white,
   },
-  messageWrapper: { 
-    marginBottom: 15, 
-    flexDirection: 'row' 
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
   },
-  messageWrapperUser: { 
-    justifyContent: 'flex-end' 
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
-  messageWrapperIA: { 
-    justifyContent: 'flex-start' 
+  statusText: {
+    ...typography.caption,
+    color: colors.white,
+    opacity: 0.8,
   },
-  
-  messageBubble: { 
-    maxWidth: '80%', 
-    padding: 12, 
-    borderRadius: 15 
+  headerLogo: {
+    width: 70,
+    height: 70,
   },
-  messageUser: { 
-    backgroundColor: '#002244', 
-    borderBottomRightRadius: 5 
+  headerBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  messageIA: { 
-    backgroundColor: '#e0e0e0', 
-    borderBottomLeftRadius: 5 
+  chatContent: {
+    padding: spacing.md,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
   },
-  
-  textUser: { 
-    color: '#fff', 
-    fontSize: 16 
+  msgRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
   },
-  textIA: { 
-    color: '#333', 
-    fontSize: 16 
+  msgRowUser: {
+    justifyContent: 'flex-end',
   },
-  
-  messageImage: { 
-    width: 200, 
-    height: 200, 
-    borderRadius: 10, 
-    marginBottom: 5, 
-    resizeMode: 'cover' 
+  msgRowIA: {
+    justifyContent: 'flex-start',
   },
-  
-  // Estilos do novo balão de "digitando"
-  typingIndicator: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 10, 
-    paddingVertical: 10, 
-    paddingHorizontal: 15 
+  iaAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.accentLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
-  typingText: { 
-    color: '#666', 
-    fontSize: 14, 
-    fontStyle: 'italic' 
+  bubble: {
+    maxWidth: '78%',
+    borderRadius: radius.lg,
+    padding: spacing.md,
   },
-
-  attachmentPreview: { 
-    flexDirection: 'row', 
-    padding: 10, 
-    backgroundColor: '#fff', 
-    borderTopWidth: 1, 
-    borderColor: '#ddd' 
+  bubbleUser: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: radius.sm,
   },
-  previewImage: { 
-    width: 60, 
-    height: 60, 
-    borderRadius: 8
+  bubbleIA: {
+    backgroundColor: colors.surface,
+    borderBottomLeftRadius: radius.sm,
+    ...shadow.sm,
   },
-  removeImageBtn: { 
-    position: 'absolute', 
-    top: 5, 
-    left: 60, 
-    backgroundColor: 'red', 
-    width: 24, 
-    height: 24, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  textUser: {
+    ...typography.body,
+    color: colors.white,
+    lineHeight: 22,
   },
-  removeImageText: { 
-    color: '#fff', 
-    fontWeight: 'bold', 
-    fontSize: 12 
+  textIA: {
+    ...typography.body,
+    color: colors.textPrimary,
+    lineHeight: 22,
   },
-
-  footer: { 
-    flexDirection: 'row', 
-    padding: 10, 
-    backgroundColor: '#fff', 
-    borderTopWidth: 1, 
-    borderColor: '#ddd', 
-    alignItems: 'flex-end' 
+  msgImage: {
+    width: 200,
+    height: 160,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+    resizeMode: 'cover',
   },
-  iconButton: { 
-    padding: 10, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  input: { 
-    flex: 1, 
-    minHeight: 45, 
-    maxHeight: 100, 
-    backgroundColor: '#f9f9f9', 
-    borderWidth: 1, 
-    borderColor: '#ddd', 
-    borderRadius: 20, 
-    paddingHorizontal: 15, 
-    paddingTop: 12, 
-    fontSize: 16 
+  typingText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
-  sendButton: { 
-    marginLeft: 10, 
-    backgroundColor: '#00ffff', 
-    paddingVertical: 12,
-    paddingHorizontal: 20, 
-    borderRadius: 20, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  attachRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  sendButtonDisabled: { 
-    backgroundColor: '#ccc' 
+  attachThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.sm,
+    backgroundColor: colors.border,
   },
-  sendButtonText: { 
-    color: '#002244', 
-    fontWeight: 'bold', 
-    fontSize: 16 
-  }
+  attachInfo: {
+    flex: 1,
+  },
+  attachLabel: {
+    ...typography.bodySmall,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  attachSub: {
+    ...typography.caption,
+    color: colors.accent,
+  },
+  removeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    padding: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: spacing.sm,
+  },
+  attachBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: colors.background,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    paddingBottom: 10,
+    ...typography.body,
+    color: colors.textPrimary,
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  sendBtnActive: {
+    backgroundColor: colors.accent,
+  },
+  sendBtnDisabled: {
+    backgroundColor: colors.background,
+  },
 });
