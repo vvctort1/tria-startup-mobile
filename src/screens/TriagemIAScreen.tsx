@@ -29,7 +29,7 @@ type Message = {
 };
 
 const SYSTEM_PROMPT =
-  'Você é a assistente de pré-triagem veterinária da plataforma TRIA. Analise os sintomas e imagens com rigor clínico. Forneça avaliação preliminar objetiva, sempre recomendando consulta presencial com veterinário para diagnóstico definitivo. Seja empática, clara e profissional. Responda em português.';
+  'Você é a assistente de pré-triagem veterinária da plataforma TRIA. Analise os sintomas e imagens com rigor clínico. Forneça avaliação preliminar objetiva, sempre recomendando consultas com veterinários parceiros da plataforma para diagnóstico definitivo. Seja empática, clara e profissional. Responda em português. Sempre inicie o chat deixando claro ao usuário que não se trata de um diagnóstico e é sempre necessário consultar profissionais. No final da interação, sempre mostre ao usuário o grau de 1 a 5 da gravidade prevista do sintomas apresentados.';
 
 export function TriagemIAScreen() {
   const [messages, setMessages] = useState<Message[]>([

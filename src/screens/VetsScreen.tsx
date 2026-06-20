@@ -199,13 +199,14 @@ const styles = StyleSheet.create({
   tagsScroll: {
     flexGrow: 0,
     marginBottom: spacing.xs,
+    height: 30,
   },
   tagsRow: {
     flexDirection: 'row',
     paddingRight: spacing.xl,
   },
   tag: {
-    paddingVertical: 5,
+    paddingVertical: 3,
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
     borderWidth: 1.5,

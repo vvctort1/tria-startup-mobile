@@ -25,28 +25,28 @@ const SLIDES = [
     title: 'Triagem Inteligente',
     subtitle: 'Descreva os sintomas do seu pet e receba uma avaliação preliminar com IA antes da consulta.',
     accent: colors.accent,
-    image: require('../../assets/ONboard1.png'),
+    image: require('../../assets/onb_1.png'),
   },
   {
     id: '2',
     title: 'Visão Computacional',
     subtitle: 'Envie fotos e nossos algoritmos auxiliam na identificação de alterações visíveis na pele, olhos e postura.',
     accent: colors.greenDark,
-    image: require('../../assets/ONboard2.png'),
+    image: require('../../assets/onb_4.png'),
   },
   {
     id: '3',
     title: 'Veterinários Especializados',
     subtitle: 'Conecte-se com profissionais verificados e agende consultas com quem realmente entende do seu animal.',
     accent: colors.primary,
-    image: require('../../assets/ONBoard3.png'),
+    image: require('../../assets/onb_2.png'),
   },
   {
     id: '4',
     title: 'Comece Agora',
     subtitle: 'Crie seu perfil, cadastre seu pet e tenha cuidado veterinário de qualidade na palma da mão.',
     accent: colors.accent,
-    image: require('../../assets/ONBoard4.png'),
+    image: require('../../assets/onb_3.png'),
   },
 ];
 
